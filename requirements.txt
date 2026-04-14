@@ -1,1 +1,6 @@
-
+streamlit
+numpy
+pillow
+torch
+opencv-python-headless
+anomalib
