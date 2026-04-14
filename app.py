@@ -1,8 +1,8 @@
 import streamlit as st
-from PIL import Image
+from PIL import Image, ImageDraw
 import numpy as np
-import cv2
 from ultralytics import YOLO
+from collections import Counter
 
 st.set_page_config(page_title="🧠 Leather Defect Detection (YOLO)", layout="wide")
 st.title("🧠 Leather Defect Detection (YOLO)")
@@ -12,7 +12,7 @@ st.title("🧠 Leather Defect Detection (YOLO)")
 # -------------------------
 @st.cache_resource
 def load_model():
-    model = YOLO("best.pt")  # make sure path is correct
+    model = YOLO("best.pt")  # make sure best.pt is in repo
     return model
 
 model = load_model()
@@ -25,8 +25,10 @@ def detect_defects(image: Image.Image, conf_thresh):
 
     results = model(image_np, conf=conf_thresh)[0]
 
-    annotated = image_np.copy()
-    boxes = []
+    annotated = image.copy()
+    draw = ImageDraw.Draw(annotated)
+
+    detections = []
 
     for box in results.boxes:
         x1, y1, x2, y2 = map(int, box.xyxy[0])
@@ -34,20 +36,15 @@ def detect_defects(image: Image.Image, conf_thresh):
         cls = int(box.cls[0])
         label = model.names[cls]
 
-        boxes.append((label, conf, x1, y1, x2, y2))
+        detections.append((label, conf, x1, y1, x2, y2))
 
-        cv2.rectangle(annotated, (x1, y1), (x2, y2), (0, 255, 0), 2)
-        cv2.putText(
-            annotated,
-            f"{label} {conf:.2f}",
-            (x1, y1 - 10),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.5,
-            (0, 255, 0),
-            2,
-        )
+        # Draw bounding box
+        draw.rectangle([x1, y1, x2, y2], outline="lime", width=3)
 
-    return annotated, boxes
+        # Draw label
+        draw.text((x1, y1 - 10), f"{label} {conf:.2f}", fill="lime")
+
+    return annotated, detections
 
 # -------------------------
 # UI
@@ -72,12 +69,44 @@ else:
 if image is not None:
     annotated, defects = detect_defects(image, conf_thresh)
 
-    st.image(annotated, caption="Detected Defects", use_column_width=True)
+    col1, col2 = st.columns(2)
+
+    with col1:
+        st.image(image, caption="Original", use_column_width=True)
+
+    with col2:
+        st.image(annotated, caption="Detected Defects", use_column_width=True)
 
     st.write(f"### 🧪 {len(defects)} defect(s) found")
 
+    # Detailed results
     for i, (label, conf, x1, y1, x2, y2) in enumerate(defects, 1):
         st.write(
             f"Defect {i}: {label} ({conf:.2f}) → "
             f"Location ({x1},{y1}) Size {x2-x1}x{y2-y1}"
         )
+
+    # -------------------------
+    # Summary
+    # -------------------------
+    labels = [d[0] for d in defects]
+    counts = Counter(labels)
+
+    st.write("### 📊 Defect Summary")
+    st.write(dict(counts))
+
+    # -------------------------
+    # Download result
+    # -------------------------
+    import io
+
+    buf = io.BytesIO()
+    annotated.save(buf, format="JPEG")
+    byte_im = buf.getvalue()
+
+    st.download_button(
+        label="📥 Download Result Image",
+        data=byte_im,
+        file_name="detected_defects.jpg",
+        mime="image/jpeg"
+    )
