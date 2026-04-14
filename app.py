@@ -1,3 +1,8 @@
+import sys
+import streamlit as st
+
+st.write(sys.version)
+st.stop()
 import streamlit as st
 from PIL import Image, ImageDraw
 import numpy as np
